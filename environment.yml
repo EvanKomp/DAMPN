@@ -1,0 +1,12 @@
+name: dampn
+channels:
+  - defaults
+  - conda-forge
+  - dglteam
+dependencies:
+  - python
+  - deepchem
+  - pytorch
+  - numpy
+  - dgl
+  - ase
