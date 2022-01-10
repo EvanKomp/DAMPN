@@ -1,6 +1,6 @@
 import setuptools
 from os import path
-import reaxnet
+import dampn
 
 here = path.abspath(path.dirname(__file__))
 AUTHORS = """
