@@ -9,8 +9,8 @@ from dgl.nn.pytorch import edge_softmax
 #typing
 from typing import Union
 
-class DAConv(nn.module):
-    """Distance Aware Attentive Convolver.
+class DAMPLayer(nn.module):
+    """Distance Attentive Message passer.
     
     Update node state by messages from combined neighbor edges and node states.
     A Gated Recurrent Unit is applied to an attention mechanism to determine
@@ -28,6 +28,9 @@ class DAConv(nn.module):
         
     In that model, only the first convolutional layer uses edge states to
     determine the messages, and convolves only over node states forever after.
+    Here, edge features are given to the next layer, and optionally convolved
+    themselves. This is mean for fully connected graphs of distances, allowing
+    the distance to be attended to.
     
     This layer opperates as such for node v: 
     
