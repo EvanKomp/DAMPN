@@ -9,7 +9,7 @@ from dgl.nn.pytorch import edge_softmax
 #typing
 from typing import Union
 
-class DAMPLayer(nn.module):
+class DAMPLayer(nn.Module):
     """Distance Attentive Message passer.
     
     Update node state by messages from combined neighbor edges and node states.
@@ -88,7 +88,7 @@ class DAMPLayer(nn.module):
         # h^{w->v}, h^v -> l^{w->v}
         self.compute_logit = nn.Sequential(
             nn.Linear(edge_hidden_size + node_hidden_size, 1),
-            nn.Dropout(dropout)
+            nn.Dropout(dropout),
             nn.LeakyReLU()
         )
         
@@ -133,11 +133,11 @@ class DAMPLayer(nn.module):
             Container for a batch of edges.
         """
         out = {
-            'h_w->v': torch.cat(edges.src['f_v'], edges.data['f_w->v'], dim=1)
+            'h_w->v': torch.cat([edges.src['f_v'], edges.data['f_w->v']], dim=1)
         }
         return out
     
-    def _apply_compute_logits(self, edges):
+    def _apply_compute_logit(self, edges):
         """Compute logit for each edge
         
         This is an edge-wise combination of node and edge hidden states h_v, h_w->v
@@ -151,7 +151,7 @@ class DAMPLayer(nn.module):
             Container for a batch of edges.
         """
         out = {
-            'l_w->v': torch.cat(edges.src['h_v'], edges.data['h_w->v'], dim=1)
+            'l_w->v': torch.cat([edges.src['h_v'], edges.data['h_w->v']], dim=1)
         }
         return out
         
@@ -191,20 +191,23 @@ class DAMPLayer(nn.module):
         
         # compute raw messages
         # weird things will happen here with system feats
-        g.edata["m_w->v"] = self.compute_raw_messages(g.edata["h_w->v"])
+        g.edata["m_w->v"] = self.compute_raw_message(g.edata["h_w->v"])
         
         # compute logits
-        g.apply_edges(self._apply_compute_logits)
-        g.edata['l_w->v'] = self.compute_logits(g.edata['l_w->v'])
+        g.apply_edges(self._apply_compute_logit)
+        g.edata['l_w->v'] = self.compute_logit(g.edata['l_w->v'])
         
         # compute attention
         g.edata['alpha'] = edge_softmax(g, g.edata['l_w->v'])
         
         # weigh the mesages
+        print('Message before weight: ', g.edata["m_w->v"])
+        print('Weights: ', g.edata['alpha'])
         g.edata["m_w->v"] = g.edata['alpha'] * g.edata["m_w->v"]
+        print('Message after weight: ', g.edata["m_w->v"])
         
         # compute context vector
-        g.update_all(fn.sum("m_w->v", 'C_v'))
+        g.update_all(fn.copy_edge("m_w->v", "m_w->v_"), fn.sum("m_w->v_", 'C_v'))
         g.ndata['C_v'] = F.elu(g.ndata['C_v'])
         
         # compute updated node state
