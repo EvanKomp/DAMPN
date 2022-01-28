@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import dgl
 import copy
-
+torch.manual_seed(3)
 
 @pytest.fixture
 def DAMPLayer():
