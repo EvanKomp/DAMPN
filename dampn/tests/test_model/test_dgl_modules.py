@@ -1,5 +1,5 @@
 import pytest
-import dampn.layers.dgl_modules
+import dampn.model.dgl_modules
 import torch
 import torch.nn as nn
 import dgl
@@ -8,7 +8,7 @@ torch.manual_seed(3)
 
 @pytest.fixture
 def DAMPLayer():
-    layer = dampn.layers.dgl_modules.DAMPLayer(
+    layer = dampn.model.dgl_modules.DAMPLayer(
         node_feature_size=5,
         edge_feature_size=2,
         node_hidden_size=8,
