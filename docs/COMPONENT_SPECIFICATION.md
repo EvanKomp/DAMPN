@@ -11,6 +11,11 @@ components that can be produced in an easy to understand format are created from
 Converting from structures on file to machine ready dataset
 ***
 
+`dampn.base.structure`
+Represents one structure
+- _Inputs_: File to consider
+- _Primary Outputs_: self, structure of atoms
+
 `dampn.data.augmentor.Augmentor`
 Partitions and augements series of labeled reactant, product, and ts structures into a set of structures to be loaded.
 Will optionally augment the dataset with non-TS structures between the TS and the reactant or product.
@@ -19,7 +24,7 @@ Will optionally augment the dataset with non-TS structures between the TS and th
 
 `dampn.data.featurizer.Featurizer`
 Call on a file containing molecule information and get back a dgl graph
-- _Inputs_: File to consider, which atom and edge features, other parameters eg basis
+- _Inputs_: Structure to consider, which atom and edge features, other parameters eg basis
 - _Primary Outputs_: dgl graph
 
 `dampn.data.loader.DataLoader`
