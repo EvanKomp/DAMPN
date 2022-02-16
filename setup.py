@@ -34,7 +34,7 @@ if __name__ == "__main__":
         install_requires=[
             'numpy', 
             'pandas', 
-            'ase',
+            'cclib',
         ],
         extras_require={
             'tests': [
