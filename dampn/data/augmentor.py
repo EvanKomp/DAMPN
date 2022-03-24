@@ -250,15 +250,15 @@ class Augmentor:
         
         self.partition_reactions(frac_reactants, frac_products, frac_tstates, frac_interps)
         
-        # get the metadata, we will be adding an extra column of the index
-        metadata = self.partition_df
+        # get the source_info, we will be adding an extra column of the index
+        source_info = self.partition_df
         if shuffle:
-            metadata = metadata.sample(frac=1.0)
-        metadata.reset_index(drop=True, inplace=True)
-        metadata.index.name = 'data_index'
+            source_info = source_info.sample(frac=1.0)
+        source_info.reset_index(drop=True, inplace=True)
+        source_info.index.name = 'data_index'
         
         # loop through each reaction, get the correct structure, and save
-        for index, row in metadata.iterrows():
+        for index, row in source_info.iterrows():
             rxn_dir = row['rxn_dir']
             use_as = row['use_as']
             
@@ -275,8 +275,8 @@ class Augmentor:
             
             structure.save(destination+f"{str(index).zfill(6)}.xyz")
         
-        metadata.to_csv(destination+"metadata.csv")
-        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Augmented dataset metadata saved at {destination+'metadata.csv'}")
+        source_info.to_csv(destination+"source_info.csv")
+        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Augmented dataset source_info saved at {destination+'source_info.csv'}")
         return
             
             
