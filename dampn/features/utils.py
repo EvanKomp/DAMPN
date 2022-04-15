@@ -9,7 +9,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 class AtomFeaturizer:
+    """Converts atomic symbol to a feature vector.
     
+    Abstract class,
+    
+    Example
+    -------
+    >>>featurizer = AtomFeaturizer()
+    >>>featurizer.featurize('H')
+    ndarray
+    
+    Attributes
+    ----------
+    size
+    mapping : dict of position, feature meaning in feature vector 
+    """
     def __init__(self, **kwargs):
         self.size = None
         raise NotImplemented()
@@ -62,12 +76,34 @@ class AtomFeaturizer:
         return feature_vector
     
     def _featurize(self, atomic_symbol: str):
-        """Define in child class."""
+        """Define in child class.
+        
+        Featurize a single atom represented by an atomic symbols string.
+        """
         raise NotImplemented()
         
         
 class AtomEncoder(AtomFeaturizer):
+    """Converts atomic symbol to atom encoding vector.
     
+    Parameters
+    ----------
+    atoms : list of str
+        the possible atomic symbols. determines the size of the output vector
+    
+    Example
+    -------
+    >>>featurizer = AtomEncoder(atoms=['H', 'O', 'C'])
+    >>>featurizer.featurize('H')
+    ndarray([[1, 0, 0]])
+    >>>featurizer.featurize('C')
+    ndarray([[0, 0, 1]])
+    
+    Attributes
+    ----------
+    size
+    mapping : dict of position, feature meaning in feature vector 
+    """
     def __init__(self, atoms: List[str] = ['H','C','N','O']):
         atoms = list(atoms)
         for item in atoms:
@@ -90,7 +126,19 @@ class AtomEncoder(AtomFeaturizer):
         return vector
     
 class AtomMassFeaturizer(AtomFeaturizer):
+    """Converts atomic symbol to atom mass.
     
+    Example
+    -------
+    >>>featurizer = AtomMassFeaturizer()
+    >>>featurizer.featurize('H')
+    ndarray([[1.008]])
+    
+    Attributes
+    ----------
+    size
+    mapping : dict of position, feature meaning in feature vector 
+    """
     def __init__(self, **kwargs):
         self.size = 1
         
@@ -107,7 +155,21 @@ class AtomMassFeaturizer(AtomFeaturizer):
 # edge features distance to something
 
 class DistanceFeaturizer:
+    """Converts distance symbol to a feature vector.
     
+    Abstract class,
+    
+    Example
+    -------
+    >>>featurizer = DistanceFeaturizer()
+    >>>featurizer.featurize(.789)
+    ndarray
+    
+    Attributes
+    ----------
+    size
+    mapping : dict of position, feature meaning in feature vector 
+    """
     def __init__(self, **kwargs):
         self.size = None
         raise NotImplemented()
@@ -129,7 +191,7 @@ class DistanceFeaturizer:
         raise NotImplemented()
     
     def featurize(self, distances: Iterable[float]):
-        """Produce feature vector for an edge with atomic a certain distance.
+        """Produce feature vector for an edge with a certain distance.
         
         Parameters
         ----------
@@ -164,7 +226,19 @@ class DistanceFeaturizer:
         raise NotImplemented()
         
 class MathFuncDistanceFeaturizer(DistanceFeaturizer):
+    """Apply a function to distance.
     
+    Example
+    -------
+    >>>featurizer = DistanceFeaturizer(func='inv')
+    >>>featurizer.featurize(0.5)
+    ndarray([[2.0]])
+    
+    Attributes
+    ----------
+    size
+    mapping : dict of position, feature meaning in feature vector 
+    """
     def __init__(self, func: Union[str, callable] = 'lin', **kwargs):
         self.size = 1
         if callable(func):
@@ -186,7 +260,6 @@ class MathFuncDistanceFeaturizer(DistanceFeaturizer):
         return
     
     def _featurize(self, distance: float):
-        """"""
         return self.func(distance)
         
     @property

@@ -456,7 +456,7 @@ class Dataset:
                 # loop through iexamples in shard
                 for example_num in range(shard_size):
                     shard, (Ai, Fi, Ei, yi, id, featsi) = self._get_example_from_shard(
-                        (shard_num, example_num), shard = shard, return_shard = True)
+                        (shard_num, example_num), shard=shard, return_shard=True)
                     dgl_graph =  dgl.graph(tuple(Ai.T), num_nodes=len(Fi))
                     dgl_graph.ndata['f'] = torch.from_numpy(Fi)
                     dgl_graph.edata['e'] = torch.from_numpy(Ei)
