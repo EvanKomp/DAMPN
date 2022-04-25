@@ -12,7 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 class StructureLoader:
-    """"""
+    """Load a directory of structures into a dataset.
+    
+    Abstract parent class.
+    
+    Parameters
+    ----------
+    source_dir : str
+        path to directory containing structure files
+    data_dir : str
+        path to new directory to save formatted machine ready data
+    featurizer : dampn.features.structure_featurizer.StructureFeaturizer, optional
+        featurizer to apply to each structure. Creates new featurizer if not passed.
+    **kwargs : passed to featurizer construction if featurizer not given
+    """
     def __init__(
         self,
         source_dir: str,
@@ -110,7 +123,18 @@ class StructureLoader:
         
         
 class BinaryTSClassificationLoader(StructureLoader):
+    """Load a directory of structures into a binary TS or not dataset.
     
+    Parameters
+    ----------
+    source_dir : str
+        path to directory containing structure files
+    data_dir : str
+        path to new directory to save formatted machine ready data
+    featurizer : dampn.features.structure_featurizer.StructureFeaturizer, optional
+        featurizer to apply to each structure. Creates new featurizer if not passed.
+    **kwargs : passed to featurizer construction if featurizer not given
+    """
     def check_source(self, source_dir: str):
         """Checks is source data directtory is valid for this loader.
     
