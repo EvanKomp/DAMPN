@@ -347,7 +347,7 @@ class Dataset:
         if featsc is None:
             featsi = None
         else:
-            featsi = featc[location[1]]
+            featsi = featsc[location[1]]
             
         if return_shard:
             return shard, (Ai, Fi, Ei, yi, id, featsi)
@@ -386,6 +386,7 @@ class Dataset:
         def shard_generator():
             A, F, E, y, ids, feats = [], [], [], [], [], []
             last_shard_num = None 
+            shard=None
             for i, location in enumerate(locations):
                 shard_num, position = location
                 if last_shard_num == shard_num:
