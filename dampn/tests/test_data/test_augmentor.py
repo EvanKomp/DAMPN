@@ -124,7 +124,7 @@ class TestAugmentor:
             with tempfile.TemporaryDirectory() as destination:
                 augmentor.augment_dataset(destination)
                 assert '000000.xyz' in os.listdir(destination), 'Did not save first structure'
-                assert 'metadata.csv' in os.listdir(destination), 'Did not save metadata'
+                assert 'source_info.csv' in os.listdir(destination), 'Did not save source_info'
                 
                 with pytest.raises(OSError):
                     augmentor.augment_dataset(destination)
