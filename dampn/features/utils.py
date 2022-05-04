@@ -25,8 +25,8 @@ class AtomFeaturizer:
     mapping : dict of position, feature meaning in feature vector 
     """
     def __init__(self, **kwargs):
-        self.size = None
-        raise NotImplemented()
+        self._size = None
+        return
     
     @property
     def size(self):
@@ -42,7 +42,7 @@ class AtomFeaturizer:
     
     @property
     def mapping(self):
-        raise NotImplemented()
+        return {}
     
     def featurize(self, atoms: Iterable[str]):
         """Produce feature vector for atom with atomic symbol.
@@ -171,8 +171,8 @@ class DistanceFeaturizer:
     mapping : dict of position, feature meaning in feature vector 
     """
     def __init__(self, **kwargs):
-        self.size = None
-        raise NotImplemented()
+        self._size = None
+        return
     
     @property
     def size(self):
@@ -188,7 +188,7 @@ class DistanceFeaturizer:
     
     @property
     def mapping(self):
-        raise NotImplemented()
+        return None
     
     def featurize(self, distances: Iterable[float]):
         """Produce feature vector for an edge with a certain distance.
@@ -228,9 +228,18 @@ class DistanceFeaturizer:
 class MathFuncDistanceFeaturizer(DistanceFeaturizer):
     """Apply a function to distance.
     
+    Parameters
+    ----------
+    func : callable or str
+        If callable, called to featurize float distance
+        If string, options are
+            - "log" natural logarithm
+            - "lin" identity
+            - "inv" inverse
+    
     Example
     -------
-    >>>featurizer = DistanceFeaturizer(func='inv')
+    >>>featurizer =         (func='inv')
     >>>featurizer.featurize(0.5)
     ndarray([[2.0]])
     
