@@ -24,6 +24,9 @@ class StructureLoader:
         path to new directory to save formatted machine ready data
     featurizer : dampn.features.structure_featurizer.StructureFeaturizer, optional
         featurizer to apply to each structure. Creates new featurizer if not passed.
+    stoichiometry_split : bool, default True
+        whether to pass the stoichiometry of the structure as a split id for dataset
+        splitting
     **kwargs : passed to featurizer construction if featurizer not given
     """
     def __init__(
@@ -31,6 +34,7 @@ class StructureLoader:
         source_dir: str,
         data_dir: str,
         featurizer: dampn.features.structure_featurizer.StructureFeaturizer = None,
+        stoichiometry_split: bool = True,
         **kwargs
     ):
         if featurizer is None:
@@ -39,6 +43,7 @@ class StructureLoader:
         self.check_source(source_dir)
         self.data_dir = data_dir
         self.partition = {}
+        self.stoichiometry_split = stoichiometry_split
         return
     
     def check_source(self, source_dir: str):
@@ -96,7 +101,11 @@ class StructureLoader:
         """
         structures, y_shard, ids_shard = shard
         A_shard, F_shard, E_shard = self.featurizer.featurize(structures)
-        return A_shard, F_shard, E_shard, y_shard, ids_shard, None
+        if self.stoichiometry_split:
+            split_ids = [struc.atom_string for struc in structures]
+            return A_shard, F_shard, E_shard, y_shard, ids_shard, None, split_ids
+        else:
+            return A_shard, F_shard, E_shard, y_shard, ids_shard, None, None
     
     def load_dataset(self, shard_size: int = 128, overwrite: bool = False):
         """Create dataset from source files.
