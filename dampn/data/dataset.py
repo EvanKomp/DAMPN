@@ -33,6 +33,9 @@ class Dataset:
         logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Successfully connected to dataset at {data_dir}.")
         return
     
+    def __len__(self):
+        return self.size
+    
     def _parse_dir(self, data_dir):
         """Checks format of directory and loads metadata.
         
@@ -62,6 +65,7 @@ class Dataset:
         
         # other properties
         self._has_system_features = os.path.exists(data_dir+'feats')
+        self._has_split_ids = os.path.exists(data_dir+'split_ids')
         
         ids = [numpy.load(data_dir+f'ids/shard-{i}.npy').reshape(-1) for i in range(self.num_shards)]
         shard_sizes = [len(id_) for id_ in ids]
@@ -96,6 +100,11 @@ class Dataset:
         return self._has_system_features
     
     @property
+    def has_split_ids(self):
+        """bool : whether the dataset examples have split ids"""
+        return self._has_split_ids
+    
+    @property
     def data_dir(self):
         """str : path to directory containing dataset."""
         return self._data_dir
@@ -121,6 +130,18 @@ class Dataset:
         return self._ids
     
     @property
+    def flat_ids(self):
+        """ndarray of len self.size"""
+        ids_ = self.ids.flatten()
+        ids_ = numpy.array([id_ for id_ in ids_ if id_ != None])
+        return ids_
+    
+    @property
+    def split_ids(self):
+        split_ids = numpy.concatenate([numpy.load(self.data_dir+f'split_ids/shard-{i}.npy').reshape(-1) for i in range(self.num_shards)])
+        return split_ids
+    
+    @property
     def size(self):
         return self.metadata['shard_size'].sum()
     
@@ -136,6 +157,11 @@ class Dataset:
         -------
         (shard_num, index_in_shard)
         """
+        dtype = type(self.ids[0][0])
+        try:
+            id = dtype(id)
+        except:
+            raise
         location = numpy.argwhere(self.ids == id)
         if len(location) > 1:
             raise RuntimeError('Critical error, dataset corrupted. Unique id exists in multiple locations.')
@@ -180,8 +206,9 @@ class Dataset:
         y := [target matrices yi for each example i] (S,)
             yi (1, T) - target values for example i
         ids := [identifiers each example i] (S,)
-        feats := [additionaal feature matrices for each example i] (S,) or None
+        feats := [additional feature matrices for each example i] (S,) or None
             exi (1, G) where G is an the number of features
+        split_ids := [indicator of structure for splitting for each i] (S,) or None
             
         """
         # get the number of nodes, edges, save to metadata
@@ -205,9 +232,11 @@ class Dataset:
         os.mkdir(data_dir+'y')
         os.mkdir(data_dir+'ids')
         os.mkdir(data_dir+'feats')
+        os.mkdir(data_dir+'split_ids')
             
         for i, shard in enumerate(shard_generator):
-            A, F, E, y, ids, feats = shard
+            A, F, E, y, ids, feats, split_ids = shard
+            
             # check all of the shapes incoming
             shard_size = len(ids)
             if y is None:
@@ -218,23 +247,32 @@ class Dataset:
                 assert len(feats) == shard_size, "shard size inconsistant"
             else:
                 logging.debug(f"{cls.__module__+'.'+cls.__name__}:Shard {i} appears to have no system level features.")
+            if split_ids is not None:
+                assert len(split_ids) == shard_size, "shard size inconsistant"
+            else:
+                logging.debug(f"{cls.__module__+'.'+cls.__name__}:Shard {i} appears to have no split_ids.")
+        
             num_nodes = [len(f) for f in F]
             num_edges = [len(a) for a in A]
             assert [len(e) for e in E] == num_edges, f"adjacency matrix sizes {num_edges} and edge features sizes {[len(e) for e in E]} incompatable"
             metadata = metadata.append({'shard_num': i,'num_nodes': num_nodes, 'num_edges': num_edges, 'shard_size': shard_size}, ignore_index=True)
-            cls._save_shard(data_dir, i, A, F, E, y, ids, feats)
+            cls._save_shard(data_dir, i, A, F, E, y, ids, feats, split_ids)
             logging.info(f"{cls.__module__+'.'+cls.__name__}:Shard {i} of size {shard_size} saved.")
-        # remove feats if we dont not save any
+        # remove feats and shard ids if we dont not save any
         if len(os.listdir(data_dir+'feats')) == 0:
             shutil.rmtree(data_dir+'feats')
             logging.debug(f"{cls.__module__+'.'+cls.__name__}:No system level features passed for this dataset.")
+        if len(os.listdir(data_dir+'split_ids')) == 0:
+            shutil.rmtree(data_dir+'split_ids')
+            logging.debug(f"{cls.__module__+'.'+cls.__name__}:No split_ids passed for this dataset.")
+            
         metadata.set_index('shard_num', drop=True, inplace=True)
         metadata.to_csv(data_dir+'metadata.csv')
         logging.info(f"{cls.__module__+'.'+cls.__name__}:Dataset creation at {data_dir} successful")
         return cls(data_dir)
     
     @staticmethod
-    def _save_shard(data_dir, shard_num, A, F, E, y, ids, feats=None):
+    def _save_shard(data_dir, shard_num, A, F, E, y, ids, feats=None, split_ids=None):
         """Save shard to file.
         
         Not meant to be interacted with directly, used by the `create_dataset` method.
@@ -251,6 +289,7 @@ class Dataset:
         y : list of target matrices yi for each example i
         ids : list of identifiers each example i
         feats : list of additional feature matrices for each example i
+        split_ids : indicators for splitting, optional
         
         See `create_dataset`.
         """
@@ -267,6 +306,10 @@ class Dataset:
         if feats is not None:
             feats = numpy.vstack(feats)
             numpy.save(data_dir+f'feats/shard-{shard_num}.npy', feats)
+        if split_ids is not None:
+            split_ids = numpy.vstack(split_ids)
+            numpy.save(data_dir+f'split_ids/shard-{shard_num}.npy', split_ids)
+            
         return
     
     def _load_shard_matrices(self, shard_num):
@@ -297,7 +340,11 @@ class Dataset:
             featsc = numpy.load(self.data_dir+f'feats/shard-{shard_num}.npy')
         else:
             featsc = None
-        return Ac, Fc, Ec, yc, idsc, featsc
+        if self.has_split_ids:
+            split_ids = numpy.load(self.data_dir+f'split_ids/shard-{shard_num}.npy')
+        else:
+            split_ids = None
+        return Ac, Fc, Ec, yc, idsc, featsc, split_ids
     
     def _get_example_from_shard(self, location, shard=None, return_shard=False):
         """Load the data from one location into memory,.
@@ -319,7 +366,8 @@ class Dataset:
         Ei : ndarray edge feature matrices
         yi : target values
         idsi : example identifier
-        (optional) featsi : ndarray of system level features
+        featsi : ndarray of system level features
+        split_idsi : ndarray of slit identifiers
         """
         if shard is None:
             shard = self._load_shard_matrices(location[0])
@@ -338,33 +386,36 @@ class Dataset:
         Mi = M_list[location[1]]
         
         # now get the matrices
-        Ac, Fc, Ec, yc, idsc, featsc = shard
+        Ac, Fc, Ec, yc, idsc, featsc, split_idsc = shard
         Ai = Ac[M_previous:M_previous+Mi, :]
         Ei = Ec[M_previous:M_previous+Mi, :]
         Fi = Fc[N_previous:N_previous+Ni, :]
         yi = yc[location[1]]
         id = idsc[location[1]]
+        split_idsi = split_idsc[location[1]]
         if featsc is None:
             featsi = None
         else:
             featsi = featsc[location[1]]
             
         if return_shard:
-            return shard, (Ai, Fi, Ei, yi, id, featsi)
+            return shard, (Ai, Fi, Ei, yi, id, featsi, split_idsi)
         else:
-            return Ai, Fi, Ei, yi, id, featsi
+            return Ai, Fi, Ei, yi, id, featsi, split_idsi
     
-    def select_ids(self, ids, data_dir, shard_size=None, **kwargs):
-        """Select specific example ids in the data.
+    def select(self, data_dir, ids=None, indexes=None, shard_size=None, **kwargs):
+        """Select specific examples in the data.
         
         Creates a new dataset of selected ids.
         
         Parameters
         ----------
-        ids : ndarray of int
-            ids to take
         data_dir : str
             directory to save selected data
+        ids : ndarray, optional
+            ids to take
+        indexes : ndarray of int, optional
+            ids to take
         shard_size : int, optional
             shard size for selected dataset. default to shard size of current dataset.
         Returns
@@ -374,26 +425,36 @@ class Dataset:
         if shard_size is None:
             shard_size = self.shard_size
         
-        ids = numpy.array(ids).reshape(-1)
-        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Selecting {len(ids)} examples for the creation of a new dataset at {data_dir} using shard sizes of {shard_size}.")
+        assert bool(ids is not None) != bool(indexes is not None), "One of `indexes` or `ids` must be passed, exclusive."
         
-        # get the location of each index specified
-        # this is shape (num ids, 2). first column is shard number, second is position in shard
-        locations = numpy.array([self._get_id_location(id) for id in ids])
+        if ids is None:
+            locations = []
+            for index in indexes:
+                shard_num = index // self.shard_size
+                position = index % self.shard_size
+                location = (shard_num, position)
+                locations.append(location)
+        else:
+            ids = numpy.array(ids).reshape(-1)
+            # get the location of each index specified
+            # this is shape (num ids, 2). first column is shard number, second is position in shard
+            locations = numpy.array([self._get_id_location(id) for id in ids])
+        
+        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Selecting {len(locations)} examples for the creation of a new dataset at {data_dir} using shard sizes of {shard_size}.")
         
         # loop through each desired datapoint, try to save time
         # by only loading new shard if needed
         def shard_generator():
-            A, F, E, y, ids, feats = [], [], [], [], [], []
+            A, F, E, y, ids, feats, split_ids = [], [], [], [], [], [], []
             last_shard_num = None 
             shard=None
             for i, location in enumerate(locations):
                 shard_num, position = location
                 if last_shard_num == shard_num:
-                    shard, (Ai, Fi, Ei, yi, id, featsi) = self._get_example_from_shard(
+                    shard, (Ai, Fi, Ei, yi, id, featsi, split_ids_i) = self._get_example_from_shard(
                         location, shard=shard, return_shard=True)
                 else:
-                    shard, (Ai, Fi, Ei, yi, id, featsi) = self._get_example_from_shard(
+                    shard, (Ai, Fi, Ei, yi, id, featsi, split_ids_i) = self._get_example_from_shard(
                         location, shard=None, return_shard=True)
                     last_shard_num = location[0]
                 A.append(Ai)
@@ -402,13 +463,14 @@ class Dataset:
                 y.append(yi)
                 ids.append(id)
                 feats.append(featsi)
+                split_ids.append(split_ids_i)
 
                 if len(A) == shard_size or i+1 == len(locations):
                     # patch over feats if all are None
                     if numpy.isnan(numpy.array(feats).astype(float)).all():
                         feats = None
-                    yield A, F, E, y, ids, feats
-                    A, F, E, y, ids, feats = [], [], [], [], [], []
+                    yield A, F, E, y, ids, feats, split_ids
+                    A, F, E, y, ids, feats, split_ids = [], [], [], [], [], [], []
                     continue
             
         return Dataset.create_dataset(shard_generator(), data_dir, **kwargs)
@@ -421,14 +483,20 @@ class Dataset:
         index : int
             position in dataset
         """
-        shard_num = index // self.shard_size
-        position = index % self.shard_size
-        Ai, Fi, Ei, yi, id, featsi = self._get_example_from_shard((shard_num, position))
+        if type(index) == int:
+            shard_num = index // self.shard_size
+            position = index % self.shard_size
+            location = (shard_num, position)
+        elif type(index) == tuple:
+            location = index
+        else:
+            location = self._get_id_location(index)
+        Ai, Fi, Ei, yi, id, featsi, split_idsi = self._get_example_from_shard(location)
         
         graph = dgl.graph(tuple(Ai.T), num_nodes=len(Fi))
         graph.ndata['f'] = torch.from_numpy(Fi)
         graph.edata['e'] = torch.from_numpy(Ei)
-        return graph, yi, id, featsi
+        return graph, yi, id, featsi, split_idsi
     
     def batch_generator(self, batch_size: int):
         """Batch DGL graphs into an iterator.
