@@ -55,5 +55,20 @@ class TestStructureFeaturizer:
         assert distance_features.shape == (24,2), "distance features incorrect shape."
         return
         
+    def test_featurize(self, STRUCTURE):
+        structures = [STRUCTURE, STRUCTURE]
+        atom_featurizer = dampn.features.utils.AtomEncoder()
+        dist_featurizer = dampn.features.utils.MathFuncDistanceFeaturizer()
+        subject = dampn.features.structure_featurizer.StructureFeaturizer(
+            atom_featurizers = [atom_featurizer, atom_featurizer],
+            distance_featurizers = [dist_featurizer, dist_featurizer],
+            distance_cutoff = 2.0
+        )
+        A, F, E = subject.featurize(structures)
+        assert A[0].shape == (24,2), "neighbor_list incorrect shape"
+        assert F[0].shape == (12,8), "atom features incorrect shape"
+        assert E[0].shape == (24,2), "distance features incorrect shape."
+        assert len(A) == len(E) == len(F) == 2, "didn't featurize 2 structres"
+        
         
         
