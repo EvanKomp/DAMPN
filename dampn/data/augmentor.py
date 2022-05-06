@@ -33,8 +33,10 @@ class Augmentor:
         Position along the interpolation is chosen uniform-random within the window.
     seed : int, optional
         Seed for random operations in the class.
+    downsample : None or int
+        Whether to consider only some reactions. Default None, use all.
     """
-    def __init__(self, root: str, interpolation_window: float = 0.5, seed=None):
+    def __init__(self, root: str, interpolation_window: float = 0.5, seed=None, downsample=None):
         if not root.endswith('/'):
             root += '/'
         self.root = root
@@ -63,7 +65,11 @@ class Augmentor:
                     raise ValueError(
                         f'Reaction at {root+directory} contains files interpereted as ({got_r}) reactants, ({got_p}) products, and ({got_ts}) transition states. There should be exactly one of each'
                     )
-        self.reaction_directories = reaction_directories
+        if downsample is not None:
+            self.reaction_directories = numpy.random.choice(
+                reaction_directories, size = downsample, replace=False)
+        else:
+            self.reaction_directories = reaction_directories
         self.reactions_to_use = {'reactant': None, 'product': None, 'tstate': None, 'interp': None}
         if interpolation_window <= 0.0 or interpolation_window > 1.0:
             raise ValueError('Interpolation_window must be between 0 and 1')
