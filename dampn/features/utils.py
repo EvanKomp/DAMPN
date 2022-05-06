@@ -26,6 +26,7 @@ class AtomFeaturizer:
     """
     def __init__(self, **kwargs):
         self._size = None
+        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Atom featurizer created with map {self.mapping}.")
         return
     
     @property
@@ -172,6 +173,7 @@ class DistanceFeaturizer:
     """
     def __init__(self, **kwargs):
         self._size = None
+        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Distance featurizer created with map {self.mapping}.")
         return
     
     @property

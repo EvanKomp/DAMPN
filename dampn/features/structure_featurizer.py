@@ -71,6 +71,7 @@ class StructureFeaturizer:
         self.distance_cutoff = distance_cutoff
         self.atom_featurizers = atom_featurizers
         self.distance_featurizers = distance_featurizers
+        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Structure featurizer created with map {self.mapping}.")
         return
     
     @property
