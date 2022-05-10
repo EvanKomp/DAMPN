@@ -69,6 +69,5 @@ class TestStructureFeaturizer:
         assert F[0].shape == (12,8), "atom features incorrect shape"
         assert E[0].shape == (24,2), "distance features incorrect shape."
         assert len(A) == len(E) == len(F) == 2, "didn't featurize 2 structres"
-        
-        
+        return
         

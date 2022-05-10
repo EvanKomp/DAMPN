@@ -95,6 +95,20 @@ class Dataset:
         return self._metadata
     
     @property
+    def graph_report(self):
+        """DataFrame: report on the graph structure for each example."""
+        ids = self.flat_ids
+        N_nodes = numpy.concatenate(self.metadata['num_nodes'].values, axis=0)
+        N_edges = numpy.concatenate(self.metadata['num_edges'].values, axis=0)
+        df = pandas.DataFrame(
+            data=numpy.array([ids, N_nodes, N_edges]).T,
+            columns = ['id', 'num_nodes', 'num_edges'])
+        if self.has_split_ids:
+            df['split_ids'] = self.split_ids
+        return df
+        
+    
+    @property
     def has_system_features(self):
         """bool : whether the dataset examples have system level features"""
         return self._has_system_features
@@ -138,7 +152,10 @@ class Dataset:
     
     @property
     def split_ids(self):
-        split_ids = numpy.concatenate([numpy.load(self.data_dir+f'split_ids/shard-{i}.npy').reshape(-1) for i in range(self.num_shards)])
+        if self.has_split_ids:
+            split_ids = numpy.concatenate([numpy.load(self.data_dir+f'split_ids/shard-{i}.npy').reshape(-1) for i in range(self.num_shards)])
+        else:
+            split_ids = None
         return split_ids
     
     @property
@@ -176,7 +193,7 @@ class Dataset:
         Parameters
         ----------
         shard_generator : iterable
-            Must yield (A, F, E, y, ids, feats). See below
+            Must yield (A, F, E, y, ids, feats, split_ids). See below
         data_dir : str
             Path to directory to save data. Must be empty or not yet created unless overwrite.
         overwrite : bool, default False
@@ -236,7 +253,6 @@ class Dataset:
             
         for i, shard in enumerate(shard_generator):
             A, F, E, y, ids, feats, split_ids = shard
-            
             # check all of the shapes incoming
             shard_size = len(ids)
             if y is None:
@@ -256,7 +272,7 @@ class Dataset:
             num_edges = [len(a) for a in A]
             assert [len(e) for e in E] == num_edges, f"adjacency matrix sizes {num_edges} and edge features sizes {[len(e) for e in E]} incompatable"
             metadata = metadata.append({'shard_num': i,'num_nodes': num_nodes, 'num_edges': num_edges, 'shard_size': shard_size}, ignore_index=True)
-            cls._save_shard(data_dir, i, A, F, E, y, ids, feats, split_ids)
+            cls._save_shard(data_dir, i, A, F, E, y, ids, feats=feats, split_ids=split_ids)
             logging.info(f"{cls.__module__+'.'+cls.__name__}:Shard {i} of size {shard_size} saved.")
         # remove feats and shard ids if we dont not save any
         if len(os.listdir(data_dir+'feats')) == 0:
@@ -392,12 +408,15 @@ class Dataset:
         Fi = Fc[N_previous:N_previous+Ni, :]
         yi = yc[location[1]]
         id = idsc[location[1]]
-        split_idsi = split_idsc[location[1]]
+        if split_idsc is None:
+            split_idsi = None
+        else:
+            split_idsi = split_idsc[location[1]]
         if featsc is None:
             featsi = None
         else:
             featsi = featsc[location[1]]
-            
+        
         if return_shard:
             return shard, (Ai, Fi, Ei, yi, id, featsi, split_idsi)
         else:
@@ -469,6 +488,8 @@ class Dataset:
                     # patch over feats if all are None
                     if numpy.isnan(numpy.array(feats).astype(float)).all():
                         feats = None
+                    if numpy.isnan(numpy.array(split_ids).astype(float)).all():
+                        split_ids = None
                     yield A, F, E, y, ids, feats, split_ids
                     A, F, E, y, ids, feats, split_ids = [], [], [], [], [], [], []
                     continue
