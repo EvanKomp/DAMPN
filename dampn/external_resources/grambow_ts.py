@@ -1,4 +1,4 @@
-"""Download raw datasets and format them."""
+"""Download raw dataset and format them."""
 import os
 import tempfile
 import urllib.request

@@ -3,6 +3,7 @@ from typing import Type
 import numpy
 import pandas
 import cclib.io
+import ase.io
 
 import dampn.constants
 
@@ -18,11 +19,14 @@ class Structure:
         Vector of string element symbols
     geometry : ndarray, optional
         Mattrix of cartesian coordinates, shape (N,3)
+    info : dict
+        additional information to track of the structure
     """
     def __init__(
         self,
         elements: Array = None,
         geometry: Array = None,
+        info: dict = {}
     ):
         self._elements = None
         self._geometry = None
@@ -34,6 +38,9 @@ class Structure:
             pass
         else:
             self.geometry = geometry
+        
+        self.info = {}
+        self.info.update(info)
         return
     
     def __repr__(self):
@@ -91,27 +98,24 @@ class Structure:
     
     @classmethod
     def load(cls, filepath: str):
-        """Load a structure from xyz file or cc log file.
+        """Load a structure from file.
         
         Parameters
         ----------
         filepath : str
             Path to load.
         """
-        
-        if filepath.endswith('.xyz'):
-            table = pandas.read_table(
-                filepath,
-                skiprows=2,
-                delim_whitespace=True,
-                names=['element', 'x', 'y', 'z'])
-            inst = cls(table['element'].values, table[['x', 'y', 'z']].values)
-        elif filepath.endswith('.log'):
+        if filepath.endswith('.log'):
             data = cclib.io.ccread(filepath)
             atomic_nums = data.atomnos
             geometry = data.atomcoords[-1]
             elements = numpy.vectorize(dampn.constants.periodic_table.__getitem__)(atomic_nums)
             inst = cls(elements, geometry)
+        else:
+            atoms = ase.io.read(filepath)
+            elements = atoms.get_chemical_symbols()
+            geometry = atoms.positions
+            inst = cls(elements, geometry, info=atoms.info)
         return inst
     
     def save(self, filepath: str):
@@ -122,17 +126,11 @@ class Structure:
         filepath : str
             Path to save to.
         """
-        file = open(filepath, 'w')
-        file.write(f'{self.N}\n\n')
-        string_array = numpy.concatenate(
-            [self.elements,
-            self.geometry],
-            axis=1
-        )
-        string_array = pandas.DataFrame(data=string_array)
-        string_array.to_csv(file, sep='\t', header=False, index=False)
-        file.close()
-        return string_array
+        atoms = ase.Atoms(symbols=self.elements.flatten(), positions=self.geometry)
+        atoms.info.update(self.info)
+        
+        ase.io.write(filepath, atoms, format='extxyz')
+        return 
     
     @property
     def vis(self):
