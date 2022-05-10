@@ -9,4 +9,5 @@ dependencies:
   - pytorch
   - numpy
   - dgl
-  - molmass
+  - pip:
+    - molmass
