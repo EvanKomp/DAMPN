@@ -36,6 +36,9 @@ class Structure:
             self.geometry = geometry
         return
     
+    def __repr__(self):
+        return self.atom_string
+    
     @property
     def elements(self):
         """ndarray : vector of elements in the structure"""
@@ -130,3 +133,14 @@ class Structure:
         string_array.to_csv(file, sep='\t', header=False, index=False)
         file.close()
         return string_array
+    
+    @property
+    def vis(self):
+        try:
+            import ase
+            import ase.visualize
+        except:
+            raise ModuleNotFoundError('Visualizing a structure requires converting to ase.Atoms. ase is not installed.')
+            
+        atoms = ase.Atoms(list(self.elements.reshape(-1)), positions=self.geometry)
+        return ase.visualize.view(atoms, viewer='x3d')

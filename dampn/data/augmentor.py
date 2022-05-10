@@ -33,8 +33,10 @@ class Augmentor:
         Position along the interpolation is chosen uniform-random within the window.
     seed : int, optional
         Seed for random operations in the class.
+    downsample : None or int
+        Whether to consider only some reactions. Default None, use all.
     """
-    def __init__(self, root: str, interpolation_window: float = 0.5, seed=None):
+    def __init__(self, root: str, interpolation_window: float = 0.5, seed=None, downsample=None):
         if not root.endswith('/'):
             root += '/'
         self.root = root
@@ -63,7 +65,11 @@ class Augmentor:
                     raise ValueError(
                         f'Reaction at {root+directory} contains files interpereted as ({got_r}) reactants, ({got_p}) products, and ({got_ts}) transition states. There should be exactly one of each'
                     )
-        self.reaction_directories = reaction_directories
+        if downsample is not None:
+            self.reaction_directories = numpy.random.choice(
+                reaction_directories, size = downsample, replace=False)
+        else:
+            self.reaction_directories = reaction_directories
         self.reactions_to_use = {'reactant': None, 'product': None, 'tstate': None, 'interp': None}
         if interpolation_window <= 0.0 or interpolation_window > 1.0:
             raise ValueError('Interpolation_window must be between 0 and 1')
@@ -250,15 +256,15 @@ class Augmentor:
         
         self.partition_reactions(frac_reactants, frac_products, frac_tstates, frac_interps)
         
-        # get the metadata, we will be adding an extra column of the index
-        metadata = self.partition_df
+        # get the source_info, we will be adding an extra column of the index
+        source_info = self.partition_df
         if shuffle:
-            metadata = metadata.sample(frac=1.0)
-        metadata.reset_index(drop=True, inplace=True)
-        metadata.index.name = 'data_index'
+            source_info = source_info.sample(frac=1.0)
+        source_info.reset_index(drop=True, inplace=True)
+        source_info.index.name = 'data_index'
         
         # loop through each reaction, get the correct structure, and save
-        for index, row in metadata.iterrows():
+        for index, row in source_info.iterrows():
             rxn_dir = row['rxn_dir']
             use_as = row['use_as']
             
@@ -275,8 +281,8 @@ class Augmentor:
             
             structure.save(destination+f"{str(index).zfill(6)}.xyz")
         
-        metadata.to_csv(destination+"metadata.csv")
-        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Augmented dataset metadata saved at {destination+'metadata.csv'}")
+        source_info.to_csv(destination+"source_info.csv")
+        logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Augmented dataset source_info saved at {destination+'source_info.csv'}")
         return
             
             
