@@ -49,18 +49,26 @@ jobs:
       run: |
         coverage report
 
-    - name: Coverage comment
-        id: coverage_comment
-        uses: ewjoachim/python-coverage-comment-action@v2
-        with:
-          GITHUB_TOKEN: ${{ github.token }}
-          VERBOSE: true
+    - name: Coverage Badge
+        uses: tj-actions/coverage-badge-py@v1.8
 
-      - name: Store Pull Request comment to be posted
-        uses: actions/upload-artifact@v2
-        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+      - name: Verify Changed files
+        uses: tj-actions/verify-changed-files@v9
+        id: changed_files
         with:
-          # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
-          name: python-coverage-comment-action
-          # If you use a different name, update COMMENT_FILENAME accordingly
-          path: python-coverage-comment-action.txt
+          files: coverage.svg
+
+      - name: Commit files
+        if: steps.changed_files.outputs.files_changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add coverage.svg
+          git commit -m "Updated coverage.svg"
+
+      - name: Push changes
+        if: steps.changed_files.outputs.files_changed == 'true'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          branch: ${{ github.ref }}
