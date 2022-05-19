@@ -531,6 +531,8 @@ class Dataset:
         -------
         generator of dgl.Graph
         """
+        if type(batch_size) is not int:
+            raise ValueError("`batch_size` must be int.")
         def generator():
             # startup variables
             dgl_graphs = []

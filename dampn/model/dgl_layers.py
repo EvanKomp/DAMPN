@@ -63,7 +63,6 @@ class DAMPLayer(nn.Module):
         node_hidden_size: int,
         edge_hidden_size: int,
         context_size: int,
-        system_features_size: int = None,
         update_edges: bool = False,
         dropout: float = 0.0
     ):
@@ -97,12 +96,8 @@ class DAMPLayer(nn.Module):
         # produces the raw message from neighbor w to node v
         # after this, we take the attention weighted sum
         # h^{w->v} -> m^{w->v}
-        # if there are system features they will go towards context computation
-        self.system_features_used = system_features_size is not None
-        if not self.system_features_used:
-            system_features_size = 0
         self.compute_raw_message = nn.Sequential(
-            nn.Linear(edge_hidden_size + system_features_size, context_size),
+            nn.Linear(edge_hidden_size, context_size),
             nn.Dropout(dropout)
         )
 
@@ -157,7 +152,7 @@ class DAMPLayer(nn.Module):
         }
         return out
 
-    def forward(self, g, node_feats, edge_feats, system_feats=None):
+    def forward(self, g, node_feats, edge_feats):
         """Forward pass through DAMPN layer.
 
         Parameters
@@ -170,16 +165,8 @@ class DAMPLayer(nn.Module):
         edge_feats : tensor of shape (M, edge_feat_size)
             Edge features for each edge, where M is the number of edges
             in this batch of graphs.
-        system_feats : tensor of shape (S, system_feats_size), optional
-            System level features to pass to the context mechanism.
-            S is the number of graphs.
+
         """
-        if self.system_features_used and system_feats is None:
-            raise ValueError(
-                f'Layer {str(self)} expects system level features but None were passed')
-        elif not self.system_features_used and system_feats is not None:
-            raise ValueError(
-                f'Layer {str(self)} recieved system level features but None were expected')
 
         # we wil be making temporary attribute updates to the graphs
         g = g.local_var()
@@ -194,7 +181,6 @@ class DAMPLayer(nn.Module):
         g.edata["h_w->v"] = self.embed_edge(g.edata["h_w->v"])
 
         # compute raw messages
-        # weird things will happen here with system feats
         g.edata["m_w->v"] = self.compute_raw_message(g.edata["h_w->v"])
 
         # compute logits
@@ -205,10 +191,7 @@ class DAMPLayer(nn.Module):
         g.edata['alpha'] = edge_softmax(g, g.edata['l_w->v'])
 
         # weigh the mesages
-        print('Message before weight: ', g.edata["m_w->v"])
-        print('Weights: ', g.edata['alpha'])
         g.edata["m_w->v"] = g.edata['alpha'] * g.edata["m_w->v"]
-        print('Message after weight: ', g.edata["m_w->v"])
 
         # compute context vector
         g.update_all(
@@ -227,3 +210,56 @@ class DAMPLayer(nn.Module):
             return g.ndata["h'_v"], g.edata["h_w->v"]
         else:
             return g.ndata["h'_v"], g.edata["f_w->v"]
+
+        
+class SystemReadoutLayer(nn.Module):
+    """Distance Attentive Message passer.
+
+    Update system node state by messages from graph nodes states.
+    A Gated Recurrent Unit is applied to an attention mechanism to determine
+    message weights. System level features can be included as system node state
+
+    This layer is inspired by the readout convolutional layer of the AttentiveFP
+    model:
+
+    <Xiong, Z., Wang, D., Liu, X., Zhong, F., Wan, X., Li, X., … Zheng, M.
+        (2020). Pushing the Boundaries of Molecular Representation for Drug
+        Discovery with the Graph Attention Mechanism. J. Med. Chem, 63, 21.
+        https://doi.org/10.1021/acs.jmedchem.9b00959>
+
+    Here, it is modified such that system level features are 
+
+    This layer opperates as such for node v:
+
+    (1) Embed node states:
+        h^v = U(f^v); U:= activated layer shape (node feat, node hidden)
+    (2) Embed neighbor states from neighbor node w and edge states to determine
+    edge hidden states:
+        h^{w \rightarrow v} = M(f^{w \rightarrow v}, f^w);
+        M:= activated layer shape (edge feat + node feat, edge hidden)
+    (3) Compute attention logits:
+        l_c^{w \rightarrow v} = A(h^{(w \rightarrow v)'}_{(t)}, h^{v})
+        A:= activated neuron shape (edge hidden + node hidden, 1)
+    (4) Compute each edges attention using softmax:
+        \alpha^{v} = softmax_{w\\in E(v)}(l_c^{i \rightarrow v})
+    (5) Compute a context vector from the messages:
+        C^{v} = elu(\\Sigma_{w \\in E(v)} \alpha^v_w * T(h^{w \rightarrow v}))
+        T:= linear layer shape (edge feat, context hidden)
+    (6) Update node states:
+        h^{v'} = GRU(h_v, C^v)
+        h^{v'} \rightarrow f^v
+    (7 - optional) Update edge states:
+        h^{w \rightarrow v} \rightarrow f^{w \rightarrow v}
+    """
+
+    def __init__(
+        self,
+        node_feature_size: int,
+        edge_feature_size: int,
+        node_hidden_size: int,
+        edge_hidden_size: int,
+        context_size: int,
+        update_edges: bool = False,
+        dropout: float = 0.0
+    ):
+            
