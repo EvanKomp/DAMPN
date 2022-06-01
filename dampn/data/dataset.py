@@ -537,6 +537,7 @@ class Dataset:
             # startup variables
             dgl_graphs = []
             ys = []
+            system_feats = []
             
             # loop shard wise
             for shard_num, shard_size in enumerate(self.metadata['shard_size']):
@@ -547,17 +548,21 @@ class Dataset:
                 
                 # loop through iexamples in shard
                 for example_num in range(shard_size):
-                    shard, (Ai, Fi, Ei, yi, id, featsi) = self._get_example_from_shard(
+                    shard, (Ai, Fi, Ei, yi, id, featsi, split_idsi) = self._get_example_from_shard(
                         (shard_num, example_num), shard=shard, return_shard=True)
                     dgl_graph =  dgl.graph(tuple(Ai.T), num_nodes=len(Fi))
-                    dgl_graph.ndata['f'] = torch.from_numpy(Fi)
-                    dgl_graph.edata['e'] = torch.from_numpy(Ei)
+                    dgl_graph.ndata['f'] = torch.from_numpy(Fi).float()
+                    dgl_graph.edata['e'] = torch.from_numpy(Ei).float()
                     dgl_graphs.append(dgl_graph)
                     ys.append(yi)
+                    system_feats.append(featsi)
                     
                     # if we have a batch yield it and reset counter
                     if len(ys) == batch_size:
-                        yield dgl_graphs, ys
+                        if not self.has_system_features:
+                            system_feats = None
+                        yield (dgl_graphs, system_feats), ys
                         dgl_graphs = []
                         ys = []
+                        system_feats = []
         return generator()

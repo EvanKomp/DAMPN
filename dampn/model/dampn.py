@@ -1,14 +1,16 @@
 """Trainable model class."""
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import numpy
 import sklearn.metrics
 import torch
 import torch.nn as nn
 
+import dgl
+
 import dampn.data.dataset
 import dampn.data.transformer
-
+import dampn.model.modules
 
 class Callback:
     """Store values over epochs.
@@ -42,21 +44,21 @@ class Callback:
     def append(self, epoch: int, metrics_dict):
         if type(epoch) != int:
             raise ValueError('`epoch` must be int')
-        for metric_name, matric_value in metric_dict.items():
+        for metric_name, matric_value in metrics_dict.items():
             if metric_name not in list(self.metrics.keys()):
                 self.metrics[metric_name] = {'epochs': [], 'values': []}
             
             if len(self.metrics[metric_name]['epochs']) == 0:
                 pass
-            elif epoch <= self.metrics[metric_name]['epochs'][-1]:
-                raise ValueError('Time travel! `epoch` must be greater than what has already been recorded.') 
-            else:
-                self.metrics[metric_name]['epochs'].append(epoch)
-                self.metrics[metric_name]['values'].append(matric_value)
+            else: 
+                if epoch <= self.metrics[metric_name]['epochs'][-1]:
+                    raise ValueError('Time travel! `epoch` must be greater than what has already been recorded.') 
+            self.metrics[metric_name]['epochs'].append(epoch)
+            self.metrics[metric_name]['values'].append(matric_value)
         return
                 
 
-class Model():
+class Model:
     
     def __init__(self):
         """Prepare attributes and construct the model.
@@ -73,12 +75,27 @@ class Model():
         self.epoch = 0
         return
     
+    def _prepare_batch(self, batch):
+        (graphs, system_feats), ys = batch
+        graphs = dgl.batch(graphs)
+        if system_feats is not None:
+            system_feats = torch.cat(system_feats)
+        y_batch = torch.tensor(ys).float()
+        
+        X_batch = {
+            'g': graphs,
+            "node_feats": graphs.ndata["f"],
+            "edge_feats": graphs.edata["e"],
+            "system_feats": system_feats
+        }
+        return X_batch, y_batch
+    
     def train(
         self,
         dataset: dampn.data.dataset.Dataset,
         epochs: int = 10,
-        batch_size: 12,
-        log_every_n_epochs: int = 5
+        batch_size: int = 12,
+        log_every_n_epochs: int = 5,
         metrics: List[Union[str, callable]] = None,
         val_dataset: dampn.data.dataset.Dataset = None
     ):
@@ -88,31 +105,39 @@ class Model():
         """
         # prepare the metrics to use
         metric_callables = {}
-        for metric in metrics:
-            if type(metric) == str:
-                metric_callables[metric] = getattr(sklearn.metrics, metric)
-            else:
-                metric_callables[metric.__name__] = metric
+        if metrics is not None:
+            for metric in metrics:
+                if type(metric) == str:
+                    metric_callables[metric] = getattr(sklearn.metrics, metric)
+                else:
+                    metric_callables[metric.__name__] = metric
         
         
         begin_epoch = int(self.epoch)
         for e in range(epochs):
+            batch_losses = []
+            
             batches = dataset.batch_generator(batch_size)
-            for X_batch, y_batch in batches:
+            for batch in batches:
+                X_batch, y_batch = self._prepare_batch(batch)
                 self.optimizer.zero_grad()
-                output = self.model(X_batch)
+                output = self.model(**X_batch)
                 loss = self.loss_fn(output, y_batch)
                 loss.backward()
                 self.optimizer.step()
                 
-                self.epoch += 1
-                
-                if self.epoch - begin_epoch % log_every_n_epochs == 0:
-                    matric_values = {'train_loss': float(loss)}
+                batch_losses.append(float(loss)*len(y_batch))
+            
+            epoch_loss = numpy.sum(batch_losses)/len(dataset)
+            self.epoch += 1
+            if (self.epoch - begin_epoch) % log_every_n_epochs == 0:
+                metric_values = {'train_loss': float(epoch_loss)}
+
+                # TODO metrics and val loss
+                self.history.append(self.epoch, metric_values)
                     
-                    # TODO metrics and val loss
-        return
-                    
+        return epoch_loss
+    
     def predict(
         self,
         dataset: dampn.data.dataset.Dataset,
@@ -123,11 +148,13 @@ class Model():
 
 
         """
-        batches = dataset.batch_generator(batch_size)
+        # hardcode batch size 10 for prediction, not sure best practice here
+        batches = dataset.batch_generator(10)
         y_pred = []
         y_true = []
-        for X_batch, y_batch in batches:
-            y_pred.append(self.model(X_batch).detach().numpy())
+        for batch in batches:
+            X_batch, y_batch = self._prepare_batch(batch)
+            y_pred.append(self.model(**X_batch).detach().numpy())
             y_true.append(y_batch)
         y_pred = numpy.concatenate(y_pred, axis=0)
         y_true = numpy.concatenate(y_true, axis=0)
@@ -162,20 +189,21 @@ class DAMPNModel(Model):
     
     def __init__(
         self,
-        n_dampn_layers: int,
         node_feature_size: int,
         edge_feature_size: int,
-        output_size: int,
+        n_dampn_layers: int = 3,
         node_hidden_sizes: Union[int, List[int]] = 28,
         edge_hidden_sizes: Union[int, List[int]] = 28,
         context_sizes: Union[int, List[int]] = 28,
         classification: bool = False,
+        readout_logit_mlp_sizes: Tuple[int] = (10,),
+        n_readout_layers: int = 3,
         system_features_size: int = None,
         update_edges: bool = False,
-        readout: "AttentiveFP",
         dropouts: Union[float, List[float]] = 0.0,
+        readout_dropout: float = 0.0,
         loss_fn_regr = nn.MSELoss,
-        loss_fn_class = nn.CrossEntropyLoss,
+        loss_fn_class = nn.BCELoss,
         optimizer = torch.optim.Adam,
         learning_rate = .01,
         **kwargs
@@ -186,9 +214,22 @@ class DAMPNModel(Model):
             self.loss_fn = loss_fn_regr()
         
         self.model = dampn.model.modules.DAMPNModule(
-        
+            node_feature_size=node_feature_size,
+            edge_feature_size=edge_feature_size,
+            n_dampn_layers=n_dampn_layers,
+            node_hidden_sizes=node_hidden_sizes,
+            edge_hidden_sizes=edge_hidden_sizes,
+            context_sizes=context_sizes,
+            classification=classification,
+            readout_logit_mlp_sizes=readout_logit_mlp_sizes,
+            n_readout_layers=n_readout_layers,
+            system_features_size=system_features_size,
+            update_edges=update_edges,
+            dropouts=dropouts,
+            readout_dropout=readout_dropout
         )
-            
+        
+        self.optimizer = optimizer(self.model.parameters(), lr=learning_rate)
         
         super().__init__()
         return
