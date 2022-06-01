@@ -488,7 +488,7 @@ class Dataset:
                     # patch over feats if all are None
                     if numpy.isnan(numpy.array(feats).astype(float)).all():
                         feats = None
-                    if numpy.isnan(numpy.array(split_ids).astype(float)).all():
+                    if (numpy.array(split_ids)==None).all():
                         split_ids = None
                     yield A, F, E, y, ids, feats, split_ids
                     A, F, E, y, ids, feats, split_ids = [], [], [], [], [], [], []

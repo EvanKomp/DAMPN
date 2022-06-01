@@ -7,6 +7,8 @@ dependencies:
   - python
   - deepchem
   - pytorch
+  - dgl
+  - psutil
   - numpy
   - dgl
   - ase

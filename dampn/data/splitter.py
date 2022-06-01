@@ -119,7 +119,7 @@ class DataSplitter:
         """
         raise NotImplemented()
         
-    def _train_test_split(self, dataset: dampn.data.dataset.Dataset, data_dir: str):
+    def _train_test_split(self, dataset: dampn.data.dataset.Dataset, data_dir: str, overwrite: bool = False):
         """Split the dataset into two sets.
         
         Parameters
@@ -127,6 +127,8 @@ class DataSplitter:
         dataset : Dataset to split
         data_dir : str
             new location to place data
+        overwrite : bool
+            whether to overwrite existing splits
         
         Returns
         -------
@@ -142,8 +144,8 @@ class DataSplitter:
         if not data_dir.endswith('/'):
             data_dir = data_dir+'/'
         
-        train = dataset.select(indexes=train_indexes, data_dir=data_dir+'train')
-        test = dataset.select(indexes=test_indexes, data_dir=data_dir+'test')
+        train = dataset.select(indexes=train_indexes, data_dir=data_dir+'train', overwrite=overwrite)
+        test = dataset.select(indexes=test_indexes, data_dir=data_dir+'test', overwrite=overwrite)
         
         # check resulting splits
         split_unique_ids_size = numpy.unique(
@@ -155,7 +157,7 @@ class DataSplitter:
         assert split_unique_ids_size == dataset.size, "not all ids selected"
         return train, test
     
-    def _k_fold_split(self, dataset: dampn.data.dataset.Dataset, data_dir: str):
+    def _k_fold_split(self, dataset: dampn.data.dataset.Dataset, data_dir: str, overwrite: bool = False):
         """Split the dataset into k folds.
         
         Parameters
@@ -163,6 +165,8 @@ class DataSplitter:
         dataset : Dataset to split
         data_dir : str
             new location to place data
+        overwrite : bool
+            whether to overwrite existing splits
         
         Returns
         -------
@@ -187,7 +191,7 @@ class DataSplitter:
         folds = []
         for i, indexes in enumerate(selected_indexes_list):
             folds.append(
-                dataset.select(indexes=indexes, data_dir=data_dir+f'fold_{i}'))
+                dataset.select(indexes=indexes, data_dir=data_dir+f'fold_{i}', overwrite=overwrite))
         
         split_unique_ids_size = numpy.unique(
             numpy.concatenate(
@@ -198,7 +202,7 @@ class DataSplitter:
         assert split_unique_ids_size == dataset.size, "not all ids selected"
         return folds
     
-    def split(self, dataset: dampn.data.dataset.Dataset, data_dir: str):
+    def split(self, dataset: dampn.data.dataset.Dataset, data_dir: str, overwrite: bool = False):
         """Split the dataset.
         
         Parameters
@@ -206,18 +210,18 @@ class DataSplitter:
         dataset : Dataset to split
         data_dir : str
             new location to place data
+        overwrite : bool
+            whether to overwrite existing splits
         
         Returns
         -------
         (k datasets,) where k is the number of splits
         """
-        return self.split_func(dataset, data_dir)
+        return self.split_func(dataset, data_dir, overwrite=overwrite)
     
     
 class RandomSplitter(DataSplitter):
-    """Abstract parent.
-    
-    Method `select_indexes` must be defined by child.
+    """Split dataset by random selection.
     
     Attributes
     ----------
