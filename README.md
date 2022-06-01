@@ -1,7 +1,5 @@
-# DAMPN
-Distance Attentive Message passing network framework.
-
-Work done entirely in Valleau Lab at the University of washington. https://www.valleau-lab.com/
+# DAMPN ![build](https://github.com/EvanKomp/DAMPN/actions/workflows/main.yml/badge.svg) ![cov](coverage.svg)
+Distance Attentive Message passing network framework for 3d molecular structure.
 
 ## Install
 
