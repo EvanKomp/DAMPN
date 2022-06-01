@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class StructureLoader:
+class BaseStructureLoader:
     """Load a directory of structures into a dataset.
     
     Abstract parent class.
@@ -40,6 +40,7 @@ class StructureLoader:
         if featurizer is None:
             featurizer = dampn.features.structure_featurizer.StructureFeaturizer(**kwargs)
         self.featurizer = featurizer
+        self._source_info = None
         self.check_source(source_dir)
         self.data_dir = data_dir
         self.partition = {}
@@ -54,7 +55,30 @@ class StructureLoader:
         source_dir : str
             Path to directory to check.
         """
-        raise NotImplemented()
+        if not source_dir.endswith('/'):
+            source_dir += '/'
+            
+        files_list = os.listdir(source_dir)
+        logging.debug(f"{type(self).__module__+'.'+type(self).__name__}:Data source directory {source_dir} contains the following files: {files_list}")
+        
+        # We expect a bunch of structures and a csv file with info
+        structure_list = []
+        source_info = None
+        for file in files_list:
+            if file.endswith('xyz'):
+                structure_list.append(file)
+            elif file == "source_info.csv":
+                source_info = pandas.read_csv(source_dir+"source_info.csv", index_col=0)
+
+                self._source_info = source_info
+            else:
+                logging.debug(f"{type(self).__module__+'.'+type(self).__name__}:Unexpected file {file}, ignoring.")
+        
+        if self.__class__ is BaseStructureLoader: 
+            logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Data source directory {source_dir} valid for loading.")
+        self.source_dir = source_dir
+        self._structure_list = structure_list
+        return
         
     def _partition_data(self, shard_size: int):
         """Organize paths in source dir into shards.
@@ -63,7 +87,14 @@ class StructureLoader:
         ----------
         shard_size : number of examples in each shard
         """
-        raise NotImplemented()
+        chunks = [
+            self._structure_list[i:i + shard_size] for i in range(
+                0, len(self._structure_list), shard_size
+            )]
+        for i, chunk in enumerate(chunks):
+            self.partition[i] = chunk
+        logging.debug(f"{type(self).__module__+'.'+type(self).__name__}:Files partitioned into chunks of size {shard_size}. Resulting partition: {self.partition}")
+        return
     
     def _load_shard(self, shard_num: int):
         """Load a shard from the partition from file.
@@ -129,9 +160,75 @@ class StructureLoader:
                 yield shard_featurized
         
         return dampn.data.dataset.Dataset.create_dataset(generator(), self.data_dir, overwrite=overwrite)
+
+    
+class StructurePropertyLoader(BaseStructureLoader):
+    """Load a directory of structures into a dataset.
+    
+    Parameters
+    ----------
+    source_dir : str
+        path to directory containing structure files
+    data_dir : str
+        path to new directory to save formatted machine ready data
+    property : str
+        name of field store in atomic strucutre file to consider the target
+    featurizer : dampn.features.structure_featurizer.StructureFeaturizer, optional
+        featurizer to apply to each structure. Creates new featurizer if not passed.
+    stoichiometry_split : bool, default True
+        whether to pass the stoichiometry of the structure as a split id for dataset
+        splitting
+    **kwargs : passed to featurizer construction if featurizer not given
+    """
+    def __init__(
+        self,
+        source_dir: str,
+        data_dir: str,
+        property: str,
+        featurizer: dampn.features.structure_featurizer.StructureFeaturizer = None,
+        stoichiometry_split: bool = True,
+        **kwargs
+    ):
+        super().__init__(
+            source_dir=source_dir,
+            data_dir=data_dir,
+            featurizer=featurizer,
+            stoichiometry_split=stoichiometry_split,
+            **kwargs)
+        self.property = property
+        return
+    
+    def _load_shard(self, shard_num: int):
+        """Load a shard from the partition from file.
         
+        Parameters
+        ----------
+        shard_num : int, which shard to load
         
-class BinaryTSClassificationLoader(StructureLoader):
+        Returns
+        -------
+        tuple of list, first list is structures, second is targets, third is ids
+        """
+        structure_files = self.partition[shard_num]
+        structures = []
+        ids = []
+        targets = []
+        
+        for structure_file in structure_files:
+            structure = dampn.base.Structure.load(self.source_dir+structure_file)
+            id_ = int(structure_file.split('.')[0])
+            try:
+                target = numpy.array(structure.info[self.property]).reshape(1,-1)
+            except KeyError:
+                raise ValueError(
+                    f"File `{structure_file} does not appear to have the desired property `{self.property}`. Properties in this structure are {structure.info}"
+                )
+            structures.append(structure)
+            ids.append(id_)
+            targets.append(target)
+        return structures, targets, ids
+        
+class BinaryTSClassificationLoader(BaseStructureLoader):
     """Load a directory of structures into a binary TS or not dataset.
     
     Parameters
@@ -152,51 +249,14 @@ class BinaryTSClassificationLoader(StructureLoader):
         source_dir : str
             Path to directory to check.
         """
-        if not source_dir.endswith('/'):
-            source_dir += '/'
-            
-        files_list = os.listdir(source_dir)
-        logging.debug(f"{type(self).__module__+'.'+type(self).__name__}:Data source directory {source_dir} contains the following files: {files_list}")
-        
-        # We expect a bunch of structures and a csv file with info
-        structure_list = []
-        source_info = None
-        for file in files_list:
-            if file.endswith('xyz'):
-                structure_list.append(file)
-            elif file == "source_info.csv":
-                source_info = pandas.read_csv(source_dir+"source_info.csv", index_col=0)
-                if "use_as" not in source_info.columns:
-                    raise ValueError("`use_as` not a column in source_info.csv for this dataset. It is required to determine if the target is TS or not.")
-
-                self._source_info = source_info
-            else:
-                logging.debug(f"{type(self).__module__+'.'+type(self).__name__}:Unexpected file {file}, ignoring.")
+        super().check_source(source_dir)
                 
-        if source_info is None:
+        if self._source_info is None:
             raise ValueError('Expected file "source_info.csv"')
-        if not len(structure_list) == len(source_info):
+        if not len(self._structure_list) == len(self._source_info):
             raise ValueError('Number of structures does not equal data in source_info.csv')
         
         logging.info(f"{type(self).__module__+'.'+type(self).__name__}:Data source directory {source_dir} valid for loading.")
-        self.source_dir = source_dir
-        self._structure_list = structure_list
-        return
-    
-    def _partition_data(self, shard_size: int):
-        """Organize paths in source dir into shards.
-        
-        Parameters
-        ----------
-        shard_size : number of examples in each shard
-        """
-        chunks = [
-            self._structure_list[i:i + shard_size] for i in range(
-                0, len(self._structure_list), shard_size
-            )]
-        for i, chunk in enumerate(chunks):
-            self.partition[i] = chunk
-        logging.debug(f"{type(self).__module__+'.'+type(self).__name__}:Files partitioned into chunks of size {shard_size}. Resulting partition: {self.partition}")
         return
     
     def _load_shard(self, shard_num: int):
