@@ -7,7 +7,7 @@ dependencies:
   - python
   - deepchem
   - pytorch
-  - dgl
+  - dgl=0.7.2
   - numpy
   - dgl
   - ase
